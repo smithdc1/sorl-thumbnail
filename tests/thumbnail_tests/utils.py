@@ -46,7 +46,42 @@ def get_open_fds_count():
     return nprocs
 
 
-class FakeFile(object):
+class override_custom_settings:
+    """
+    settings overrider context manager.
+    https://github.com/django/django/blob/1.6.2/django/test/utils.py#L209-L268
+    """
+
+    def __init__(self, settings_obj, **kwargs):
+        self.settings = settings_obj
+        self.options = kwargs
+
+    def __enter__(self):
+        self.enable()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.disable()
+
+    def enable(self):
+        override = UserSettingsHolder(self.settings._wrapped)
+        for key, new_value in self.options.items():
+            setattr(override, key, new_value)
+        self.wrapped = self.settings._wrapped
+        self.settings._wrapped = override
+        for key, new_value in self.options.items():
+            setting_changed.send(sender=self.settings._wrapped.__class__,
+                                 setting=key, value=new_value, enter=True)
+
+    def disable(self):
+        self.settings._wrapped = self.wrapped
+        del self.wrapped
+        for key in self.options:
+            new_value = getattr(self.settings, key, None)
+            setting_changed.send(sender=self.settings._wrapped.__class__,
+                                 setting=key, value=new_value, enter=False)
+
+
+class FakeFile:
     """
     Used to test the _get_format method.
     """
